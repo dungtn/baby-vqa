@@ -1,35 +1,67 @@
 from keras.models import Sequential
-from keras.layers.core import Dense, Activation, Merge, Dropout, Reshape
+from keras.layers import Bidirectional, BatchNormalization
+from keras.layers.core import Dense, Activation, Merge, Dropout, Flatten, Reshape
+from keras.layers.convolutional import MaxPooling2D
 from keras.layers.recurrent import LSTM
 
 
-class Model(object):
+class LSTMModel(object):
 
-	def __init__(self, img_dim=4096, word_dim=300, max_sent_len=26, nb_classes=1000, lstm_hidden_dim=512, fc_hidden_dim=2014, bidirect=True, dropout=0.5):
-		img_model = Sequential()
-		img_model.add(Reshape(input_shape=(img_dim,), dims=(img_dim,)))
+    def __init__(self, img_dim=4096, word_dim=300, max_sent_len=26, nb_classes=1000, lstm_hidden_dim=512, fc_hidden_dim=2014, bidirect=True, dropout=0.5):
+        self.img_dim = img_dim
+        self.word_dim = word_dim
+        self.max_sent_len = max_sent_len
+        self.nb_classes = nb_classes
+        self.lstm_hidden_dim = lstm_hidden_dim
+        self.fc_hidden_dim = fc_hidden_dim
+        self.bidirect = bidirect
+        self.dropout = dropout
 
-		txt_model = Sequential()
-		# return sequences if use bidrectional LSTM
-		txt_model.add(LSTM(output_dim=hidden_dim, return_sequences=bidirect, input_shape=(max_sent_len, word_dim)))
-		#TODO: check if the paper actually use bi-lstm?!? not really understand what happened here!
-		if bidirect:
-			txt_model.add(LSTM(output_dim=hidden_dim, return_sequences=False))
+    def build(self):
+        self.img_model = Sequential()
+        self.img_model.add(MaxPooling2D(input_shape=(14, 14, 512)))
+        self.img_model.add(Flatten())
+        for i in xrange(3):
+            self.img_model.add(Dense(self.img_dim, activation='tanh'))
+            self.img_model.add(BatchNormalization())
 
-		model = Sequential()
-		model.add(Merge(txt_model, img_model), mode='concat', concat_axis=1)
+        self.txt_model = Sequential()
+        if self.bidirect:
+            self.txt_model.add(Bidirectional(LSTM(output_dim=self.lstm_hidden_dim), input_shape=(self.max_sent_len, self.word_dim)))
+        else:
+            self.txt_model.add(LSTM(output_dim=self.lstm_hidden_dim, input_shape=(self.max_sent_len, self.word_dim)))
 
-		for i in xrange(2):
-			model.add(Dense(fc_hidden_dim, init='uniform'))
-			model.add(Activation('tanh'))
-			model.add(Dropout(dropout))
+        self.model = Sequential()
+        self.model.add(Merge([self.txt_model, self.img_model], mode='concat', concat_axis=1))
+        self.model.add(BatchNormalization())
 
-		model.add(Dense(nb_classes))
-		model.add(Activation('softmax'))
+        for i in xrange(2):
+            self.model.add(Dense(self.fc_hidden_dim, init='he_normal', activation='relu'))
+            self.model.add(BatchNormalization())
+            self.model.add(Dropout(self.dropout))
 
-		model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
-		return model
+        self.model.add(Dense(self.nb_classes, activation='softmax'))
+
+        self.model.compile(loss='categorical_crossentropy', optimizer='adadelta', metrics=['accuracy'])
+        self.model.summary()
+        
+    def fit(self, X_ques, X_img, y, nb_epoch=50, batch_size=50, shuffle=True):
+        return self.model.fit([X_ques, X_img], y, nb_epoch=nb_epoch, batch_size=batch_size, shuffle=shuffle)
+
+    def evaluate(self, X_ques_test, X_im_test, y_test, batch_size=50):
+    	return self.model.evaluate([X_ques_test, X_im_test], y_test, batch_size=batch_size)
 
 	def save(self):
-		model_fn = '../models/'+"".join(["{0}={1},".format(k,v) for k,v in self.params.iteritems()])
-		open(model_fn+'.json', 'w').write(model.to_json())
+		params = {
+			'img_dim': self.img_dim,
+	        'word_dim': self.word_dim,
+	        'max_sent_len': self.max_sent_len,
+	        'nb_classes': self.nb_classes,
+	        'lstm_hidden_dim': self.lstm_hidden_dim,
+	        'fc_hidden_dim': self.fc_hidden_dim,
+	        'bidirect': self.bidirect,
+	        'dropout': self.dropout
+		}
+		fn = '../models/'+"".join(["{0}={1},".format(k,v) for k,v in params.iteritems()])
+		open(fn+'.json', 'w').write(self.model.to_json())
+
