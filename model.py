@@ -1,13 +1,15 @@
 from keras.models import Sequential
 from keras.layers import Bidirectional, BatchNormalization
+from keras.layers.embeddings import Embedding
 from keras.layers.core import Dense, Activation, Merge, Dropout, Flatten, Reshape
 from keras.layers.convolutional import MaxPooling2D
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import LSTM, GRU
 
 
 class LSTMModel(object):
 
-    def __init__(self, img_dim=4096, word_dim=300, max_sent_len=26, nb_classes=1000, lstm_hidden_dim=512, fc_hidden_dim=2014, bidirect=True, dropout=0.5):
+    def __init__(self, vocab_size = 10000, img_dim=4096, word_dim=300, max_sent_len=26, nb_classes=1000, lstm_hidden_dim=512, fc_hidden_dim=2014, bidirect=True, dropout=0.5):
+        self.vocab_size = vocab_size
         self.img_dim = img_dim
         self.word_dim = word_dim
         self.max_sent_len = max_sent_len
@@ -26,10 +28,15 @@ class LSTMModel(object):
             self.img_model.add(BatchNormalization())
 
         self.txt_model = Sequential()
+        # self.txt_model.add(Embedding(self.vocab_size, self.word_dim, input_length=self.max_sent_len, mask_zero = True))
         if self.bidirect:
             self.txt_model.add(Bidirectional(LSTM(output_dim=self.lstm_hidden_dim), input_shape=(self.max_sent_len, self.word_dim)))
+            # self.txt_model.add(Bidirectional(GRU(output_dim=self.lstm_hidden_dim), input_shape=(self.max_sent_len, self.word_dim)))
         else:
+            M = Masking(mask_value=0., input_shape=(self.max_sent_len, self.word_dim))
+            self.txt_model.add(M)
             self.txt_model.add(LSTM(output_dim=self.lstm_hidden_dim, input_shape=(self.max_sent_len, self.word_dim)))
+            # self.txt_model.add(GRU(output_dim=self.lstm_hidden_dim, input_shape=(self.max_sent_len, self.word_dim)))
 
         self.model = Sequential()
         self.model.add(Merge([self.txt_model, self.img_model], mode='concat', concat_axis=1))
@@ -50,6 +57,8 @@ class LSTMModel(object):
 
     def evaluate(self, X_ques_test, X_im_test, y_test, batch_size=50):
     	return self.model.evaluate([X_ques_test, X_im_test], y_test, batch_size=batch_size)
+    def train_on_batch(self, X_ques, X_img, y):
+        return self.model.train_on_batch([X_ques, X_img], y)
 
 	def save(self):
 		params = {
