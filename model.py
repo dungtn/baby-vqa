@@ -59,6 +59,8 @@ class LSTMModel(object):
     	return self.model.evaluate([X_ques_test, X_im_test], y_test, batch_size=batch_size)
     def train_on_batch(self, X_ques, X_img, y):
         return self.model.train_on_batch([X_ques, X_img], y)
+    def test_on_batch(self, X_ques_test, X_img_test, y_test):
+        return self.model.test_on_batch([X_ques_test, X_img_test], y_test)
 
 	def save(self):
 		params = {
